@@ -1,0 +1,33 @@
+# Binaries
+bin/
+example/example
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+*.out
+*.test
+coverage.txt
+profiling/
+
+# Dependencies
+# vendor/ # Uncomment if using vendoring
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables
+.env
+.env.local
+
+# Build artifacts
+dist/
+target/
