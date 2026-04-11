@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -16,6 +17,8 @@ import (
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
+
+	ginmw "github.com/alanfranciscos/otel-collector/pkg/telemetry/middleware/gin"
 )
 
 var applicationName string = "EXAMPLE-API"
@@ -37,6 +40,11 @@ func routes(app *gin.Engine) {
 	app.GET("/", func(ctx *gin.Context) {
 		traceID, spanID, isSampled := GetTraceInfo(ctx)
 		fmt.Printf("traceID: %v; spanID: %v; isSampled: %v\n", traceID, spanID, isSampled)
+		ctx.Error(errors.New("fake error (simulated vem antes)"))
+		ctx.Error(errors.New("fake error (simulated)"))
+		ctx.JSON(500, gin.H{
+			"message": "Hello, World!",
+		})
 	})
 }
 
@@ -63,9 +71,10 @@ func main() {
 		),
 	)
 
-	app := gin.Default()
+	app := gin.New()
 	app.ContextWithFallback = true
 	app.Use(otelgin.Middleware(applicationName))
+	app.Use(ginmw.Middleware(applicationName)...)
 
 	routes(app)
 
