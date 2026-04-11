@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -10,14 +11,21 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
+
+var applicationName string = "EXAMPLE-API"
 
 func simulateDBCall() {
 	time.Sleep(50 * time.Millisecond)
 }
 
-func routes(engine *gin.Engine) {
-	engine.GET("/api/v1/users", func(c *gin.Context) {
+func routes(app *gin.Engine) {
+	app.GET("/users", func(c *gin.Context) {
 		simulateDBCall()
 
 		c.JSON(200, gin.H{
@@ -25,15 +33,45 @@ func routes(engine *gin.Engine) {
 			"count":   15,
 		})
 	})
+
+	app.GET("/", func(ctx *gin.Context) {
+		traceID, spanID, isSampled := GetTraceInfo(ctx)
+		fmt.Printf("traceID: %v; spanID: %v; isSampled: %v\n", traceID, spanID, isSampled)
+	})
+}
+
+func GetTraceInfo(ctx context.Context) (traceID string, spanID string, isSampled bool) {
+	spanCtx := trace.SpanContextFromContext(ctx)
+
+	if spanCtx.HasTraceID() {
+		traceID = spanCtx.TraceID().String()
+	}
+	if spanCtx.HasSpanID() {
+		spanID = spanCtx.SpanID().String()
+	}
+
+	isSampled = spanCtx.IsSampled()
+
+	return traceID, spanID, isSampled
 }
 
 func main() {
-	engine := gin.New()
-	routes(engine)
+
+	otel.SetTracerProvider(
+		sdktrace.NewTracerProvider(
+			sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.AlwaysSample())),
+		),
+	)
+
+	app := gin.Default()
+	app.ContextWithFallback = true
+	app.Use(otelgin.Middleware(applicationName))
+
+	routes(app)
 
 	srv := &http.Server{
 		Addr:    ":8080",
-		Handler: engine,
+		Handler: app,
 	}
 
 	go func() {
