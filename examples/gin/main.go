@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -25,28 +27,35 @@ func routes(engine *gin.Engine) {
 	})
 }
 
-func startServer() {
+func main() {
 	engine := gin.New()
 	routes(engine)
 
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: engine,
+	}
+
 	go func() {
 		log.Println("Starting example API on :8080...")
-		if err := engine.Run(":8080"); err != nil {
-			log.Fatalf("Failed to start server: %v", err)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %s\n", err)
 		}
 	}()
-}
 
-func gracefulShutdown() {
+	// shutdown gracefully on interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
 	<-quit
 
-	log.Println("Shutdown complete.")
-}
+	log.Println("Shutting down server...")
 
-func main() {
-	startServer()
-	gracefulShutdown()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatal("Server forced to shutdown:", err)
+	}
+
+	log.Println("Shutdown complete.")
 }
