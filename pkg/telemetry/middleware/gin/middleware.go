@@ -63,6 +63,7 @@ func loggerMiddleware(serviceName string) gin.HandlerFunc {
 
 		duration := time.Since(start).Milliseconds()
 
+		// fix this because break in race conditions and this is inneficient to set this every request
 		logrus.SetFormatter(&logrus.JSONFormatter{})
 		fields := makeFields(c, duration)
 
@@ -77,7 +78,6 @@ func loggerMiddleware(serviceName string) gin.HandlerFunc {
 		default:
 			entry.Info("[" + serviceName + "] - Request Completed")
 		}
-
 	}
 }
 
