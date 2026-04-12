@@ -2,55 +2,53 @@ package gin
 
 import (
 	"os"
-	"reflect"
 	"time"
 
+	"github.com/alanfranciscos/otel-collector/internal/pkg/telemetry/schema/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 )
 
-func makeFields(c *gin.Context, duration int64) logrus.Fields {
-	httpField := logrus.Fields{
-		"path":         c.Request.URL.Path,
-		"method":       c.Request.Method,
-		"query_params": c.Request.URL.RawQuery,
-		"ip":           c.ClientIP(),
-		"user_agent":   c.Request.UserAgent(),
+type GinMiddlewareConfig struct {
+	ServiceName string
+}
+
+func NewGinMiddlewareConfig(serviceName string) *GinMiddlewareConfig {
+	return &GinMiddlewareConfig{
+		ServiceName: serviceName,
+	}
+}
+
+func makeFields(c *gin.Context, duration int64, serviceName string) logrus.Fields {
+	statusCode := c.Writer.Status()
+	logFields := logger.NewLogFields(
+		serviceName,
+		duration,
+		logger.RequestLogField{
+			Path:        c.Request.URL.Path,
+			Method:      c.Request.Method,
+			QueryParams: c.Request.URL.Query(),
+			IP:          c.ClientIP(),
+			UserAgent:   c.Request.UserAgent(),
+		},
+		logger.ResponseLogField{
+			StatusCode: statusCode,
+		},
+		logger.DatabaseLogField{
+			NumberOfCalls:    c.GetInt("num_db_calls"),
+			NumberOfFailures: c.GetInt("num_db_failures"),
+		},
+	)
+
+	if statusCode >= 400 {
+		logFields.SetEvents()
 	}
 
-	responseField := logrus.Fields{
-		"status_code": c.Writer.Status(),
+	for _, err := range c.Errors {
+		logFields.SetErrors(err)
 	}
 
-	databaseField := logrus.Fields{
-		"num_calls":    c.GetInt("num_db_calls"),
-		"num_failures": c.GetInt("num_db_failures"),
-	}
-
-	errorsJson := c.Errors.JSON()
-	typeErrors := reflect.TypeOf(errorsJson)
-	var errors []interface{}
-	switch {
-	case errorsJson == nil:
-		errors = []interface{}{}
-	case typeErrors.Kind() != reflect.Slice:
-		errors = []interface{}{errorsJson}
-	default:
-		errors = errorsJson.([]interface{})
-	}
-	errorField := logrus.Fields{
-		"error": errors,
-	}
-
-	fields := logrus.Fields{
-		"duration_ms": duration,
-		"request":     httpField,
-		"response":    responseField,
-		"database":    databaseField,
-		"error":       errorField,
-	}
-
-	return fields
+	return logFields.ToLogrusFields()
 }
 
 func loggerMiddleware(serviceName string) gin.HandlerFunc {
@@ -65,18 +63,18 @@ func loggerMiddleware(serviceName string) gin.HandlerFunc {
 
 		// fix this because break in race conditions and this is inneficient to set this every request
 		logrus.SetFormatter(&logrus.JSONFormatter{})
-		fields := makeFields(c, duration)
+		fields := makeFields(c, duration, serviceName)
 
 		entry := logrus.WithContext(c.Request.Context()).WithFields(fields)
 
 		logrus.SetOutput(os.Stdout)
 		switch {
 		case c.Writer.Status() >= 500:
-			entry.Error("[" + serviceName + "] - Request Completed with Server Error")
+			entry.Error("Request Completed with Server Error")
 		case c.Writer.Status() >= 400:
-			entry.Warn("[" + serviceName + "] - Request Completed with Client Error")
+			entry.Warn("Request Completed with Client Error")
 		default:
-			entry.Info("[" + serviceName + "] - Request Completed")
+			entry.Info("Request Completed")
 		}
 	}
 }
