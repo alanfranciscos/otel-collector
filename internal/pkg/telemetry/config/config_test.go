@@ -3,7 +3,20 @@ package config
 import (
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
+
+func TestLoadConfig_Defaults(t *testing.T) {
+	os.Clearenv()
+	cfg := LoadConfig()
+
+	assert.Equal(t, EnvLocal, cfg.Environment)
+	assert.False(t, cfg.IsProduction)
+	assert.Equal(t, ProtocolHTTP, cfg.Protocol)
+	assert.Equal(t, "", cfg.ServiceName)
+	assert.Equal(t, "", cfg.Endpoint)
+}
 
 func TestLoadConfig_Custom(t *testing.T) {
 	os.Clearenv()
@@ -14,64 +27,28 @@ func TestLoadConfig_Custom(t *testing.T) {
 
 	cfg := LoadConfig()
 
-	if cfg.ServiceName != "MY-TEST-SERVICE" {
-		t.Errorf("Expected MY-TEST-SERVICE, got %v", cfg.ServiceName)
-	}
-	if cfg.Environment != "STAGING" {
-		t.Errorf("Expected STAGING, got %v", cfg.Environment)
-	}
-	if cfg.IsProduction {
-		t.Errorf("Expected IsProduction false, got %v", cfg.IsProduction)
-	}
-	if cfg.Protocol != ProtocolGRPC {
-		t.Errorf("Expected protocol grpc, got %v", cfg.Protocol)
-	}
+	assert.Equal(t, "MY-TEST-SERVICE", cfg.ServiceName)
+	assert.Equal(t, EnvStaging, cfg.Environment)
+	assert.False(t, cfg.IsProduction)
+	assert.Equal(t, ProtocolGRPC, cfg.Protocol)
+	assert.Equal(t, "LOCALHOST:4317", cfg.Endpoint)
 }
 
-func TestLoadConfig_WithoutOtelServiceNameEnv(t *testing.T) {
+func TestLoadConfig_Production(t *testing.T) {
 	os.Clearenv()
-	os.Unsetenv("OTEL_SERVICE_NAME")
-	os.Setenv("ENVIRONMENT", "staging")
-	os.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
-	os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317")
+	os.Setenv("ENVIRONMENT", "production")
 
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("Expected panic due to missing OTEL_SERVICE_NAME")
-		}
-	}()
+	cfg := LoadConfig()
 
-	LoadConfig()
+	assert.Equal(t, EnvProduction, cfg.Environment)
+	assert.True(t, cfg.IsProduction)
 }
 
-func TestLoadConfig_WithoutOtelEndpointEnv(t *testing.T) {
+func TestLoadConfig_HttpProtocol(t *testing.T) {
 	os.Clearenv()
-	os.Setenv("OTEL_SERVICE_NAME", "my-test-service")
-	os.Setenv("ENVIRONMENT", "staging")
-	os.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
-	os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	os.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http")
 
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("Expected panic due to missing OTEL_EXPORTER_OTLP_ENDPOINT")
-		}
-	}()
+	cfg := LoadConfig()
 
-	LoadConfig()
-}
-
-func TestLoadConfig_WithoutOtelProtocolEnv(t *testing.T) {
-	os.Clearenv()
-	os.Setenv("OTEL_SERVICE_NAME", "my-test-service")
-	os.Setenv("ENVIRONMENT", "staging")
-	os.Unsetenv("OTEL_EXPORTER_OTLP_PROTOCOL")
-	os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317")
-
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("Expected panic due to missing OTEL_EXPORT PROTOCOL")
-		}
-	}()
-
-	LoadConfig()
+	assert.Equal(t, ProtocolHTTP, cfg.Protocol)
 }

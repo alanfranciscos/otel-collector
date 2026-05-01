@@ -20,11 +20,12 @@ const (
 	EnvLocal      EnvironmentEnum = "LOCAL"
 )
 
-type EnvConfig struct {
-	Environment EnvironmentEnum
-	ServiceName string
-	Protocol    ExporterProtocol
-	Endpoint    string
+type Config struct {
+	ServiceName  string
+	Environment  EnvironmentEnum
+	IsProduction bool
+	Protocol     ExporterProtocol
+	Endpoint     string
 }
 
 func getEnvironment() EnvironmentEnum {
@@ -37,53 +38,26 @@ func getEnvironment() EnvironmentEnum {
 	case "LOCAL":
 		return EnvLocal
 	default:
-		panic("Invalid ENVIRONMENT value. Must be one of [PRODUCTION, STAGING, LOCAL]")
+		return EnvLocal
 	}
 }
 
-type Config struct {
-	ServiceName  string
-	Environment  EnvironmentEnum
-	IsProduction bool
-	Protocol     ExporterProtocol
-	Endpoint     string
-}
-
-func loadEnvConfig() EnvConfig {
-	environment := getEnvironment()
-	if os.Getenv("OTEL_SERVICE_NAME") == "" {
-		panic("OTEL_SERVICE_NAME environment variable is required")
-	}
-	if os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" {
-		panic("OTEL_EXPORTER_OTLP_ENDPOINT environment variable is required")
-	}
-	if os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL") == "" {
-		panic("OTEL_EXPORTER_OTLP_PROTOCOL environment variable is required [http, grpc]")
-	}
+func LoadConfig() *Config {
+	env := getEnvironment()
+	serviceName := os.Getenv("OTEL_SERVICE_NAME")
+	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	protocolStr := strings.ToLower(os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL"))
 
 	protocol := ProtocolHTTP
-	if strings.ToLower(os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL")) == "grpc" {
+	if protocolStr == "grpc" {
 		protocol = ProtocolGRPC
 	}
 
-	envConfig := EnvConfig{
-		Environment: environment,
-		ServiceName: strings.ToUpper(os.Getenv("OTEL_SERVICE_NAME")),
-		Protocol:    protocol,
-		Endpoint:    strings.ToUpper(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")),
-	}
-
-	return envConfig
-}
-
-func LoadConfig() Config {
-	envConfig := loadEnvConfig()
-
-	return Config{
-		ServiceName:  envConfig.ServiceName,
-		Environment:  envConfig.Environment,
-		IsProduction: envConfig.Environment == "PRODUCTION",
-		Protocol:     envConfig.Protocol,
-		Endpoint:     envConfig.Endpoint,
+	return &Config{
+		ServiceName:  strings.ToUpper(serviceName),
+		Environment:  env,
+		IsProduction: env == EnvProduction,
+		Protocol:     protocol,
+		Endpoint:     strings.ToUpper(endpoint),
 	}
 }
