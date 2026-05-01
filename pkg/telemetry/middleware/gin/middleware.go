@@ -7,38 +7,48 @@ import (
 	"github.com/alanfranciscos/otel-collector/internal/pkg/telemetry/schema/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
+type GinMiddleware interface {
+	Middleware() []gin.HandlerFunc
+}
+
 type GinMiddlewareConfig struct {
-	ServiceName string
 }
 
-func NewGinMiddlewareConfig(serviceName string) *GinMiddlewareConfig {
-	return &GinMiddlewareConfig{
-		ServiceName: serviceName,
-	}
+func NewGinMiddlewareConfig() *GinMiddlewareConfig {
+	return &GinMiddlewareConfig{}
 }
 
-func makeFields(c *gin.Context, duration int64, serviceName string) logrus.Fields {
+func makeFields(c *gin.Context, duration int64) logrus.Fields {
 	statusCode := c.Writer.Status()
 	logFields := logger.NewLogFields(
-		serviceName,
-		duration,
-		logger.RequestLogField{
-			Path:        c.Request.URL.Path,
-			Method:      c.Request.Method,
-			QueryParams: c.Request.URL.Query(),
-			IP:          c.ClientIP(),
-			UserAgent:   c.Request.UserAgent(),
-		},
-		logger.ResponseLogField{
-			StatusCode: statusCode,
-		},
-		logger.DatabaseLogField{
-			NumberOfCalls:    c.GetInt("num_db_calls"),
-			NumberOfFailures: c.GetInt("num_db_failures"),
-		},
+		time.Now().Format(time.RFC3339),
 	)
+
+	requestField := &logger.RequestLogField{
+		Path:        c.Request.URL.Path,
+		Method:      c.Request.Method,
+		QueryParams: c.Request.URL.Query(),
+		IP:          c.ClientIP(),
+		UserAgent:   c.Request.UserAgent(),
+	}
+
+	responseField := &logger.ResponseLogField{
+		StatusCode: statusCode,
+	}
+
+	databaseField := &logger.DatabaseLogField{
+		NumberOfCalls:    c.GetInt("num_db_calls"),
+		NumberOfFailures: c.GetInt("num_db_failures"),
+	}
+
+	logFields.
+		SetDurationMs(duration).
+		SetRequest(requestField).
+		SetResponse(responseField).
+		SetDatabase(databaseField)
 
 	if statusCode >= 400 {
 		logFields.SetEvents()
@@ -51,7 +61,7 @@ func makeFields(c *gin.Context, duration int64, serviceName string) logrus.Field
 	return logFields.ToLogrusFields()
 }
 
-func loggerMiddleware(serviceName string) gin.HandlerFunc {
+func loggerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		start := time.Now()
@@ -61,13 +71,10 @@ func loggerMiddleware(serviceName string) gin.HandlerFunc {
 
 		duration := time.Since(start).Milliseconds()
 
-		// fix this because break in race conditions and this is inneficient to set this every request
-		logrus.SetFormatter(&logrus.JSONFormatter{})
-		fields := makeFields(c, duration, serviceName)
+		fields := makeFields(c, duration)
 
 		entry := logrus.WithContext(c.Request.Context()).WithFields(fields)
 
-		logrus.SetOutput(os.Stdout)
 		switch {
 		case c.Writer.Status() >= 500:
 			entry.Error("Request Completed with Server Error")
@@ -79,8 +86,9 @@ func loggerMiddleware(serviceName string) gin.HandlerFunc {
 	}
 }
 
-func Middleware(serviceName string) []gin.HandlerFunc {
+func (g GinMiddlewareConfig) Middleware() []gin.HandlerFunc {
 	return []gin.HandlerFunc{
-		loggerMiddleware(serviceName),
+		otelgin.Middleware(os.Getenv("OTEL_SERVICE_NAME")),
+		loggerMiddleware(),
 	}
 }
