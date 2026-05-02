@@ -83,12 +83,12 @@ func (f *logFields) SetDatabase(database *DatabaseLogField) *logFields {
 
 func (f *logFields) ToLogrusFields() logrus.Fields {
 	return logrus.Fields{
-		"service":     f.Service,
-		"duration_ms": f.DurationMs,
-		"request":     f.Request,
-		"response":    f.Response,
-		"database":    f.Database,
-		"errors":      f.Errors,
-		"events":      f.Events,
+		"service_name": f.Service,
+		"duration_ms":  f.DurationMs,
+		"request":       f.Request,
+		"response":      f.Response,
+		"database":      f.Database,
+		"errors":        f.Errors,
+		"events":        f.Events,
 	}
 }
